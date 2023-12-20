@@ -1,10 +1,14 @@
 ﻿using ArticleDotNetConfiguration;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 var builder = Host.CreateApplicationBuilder(args);
+
+var connectionString = builder.Configuration.GetConnectionString("ArticleDotNetConfiguration");
+builder.Configuration.AddSqlServer(connectionString);
 
 builder.Services.Configure<AppOptions>(
     builder.Configuration.GetSection("App")
