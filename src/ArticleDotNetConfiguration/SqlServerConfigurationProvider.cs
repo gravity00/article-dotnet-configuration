@@ -1,33 +1,79 @@
 ﻿using Dapper;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Data.SqlClient;
+using System.Diagnostics;
 
 namespace ArticleDotNetConfiguration;
 
 public class SqlServerConfigurationProvider(
     SqlServerConfigurationSource source
-) : ConfigurationProvider
+) : ConfigurationProvider, IDisposable
 {
-    public override void Load()
-    {
-        Dictionary<string, string> applicationSettings;
-        using (var connection = new SqlConnection(source.ConnectionString))
-        {
-            connection.Open();
+    private readonly CancellationTokenSource _cts = new();
+    private Task _refreshWorker;
 
-            applicationSettings = connection.Query<(string Key, string Value)>(@"
-select 
-    [Key],
-    [Value]
-from ApplicationSettings").ToDictionary(e => e.Key, e => e.Value);
+    #region IDisposable
+
+    ~SqlServerConfigurationProvider() => Dispose(false);
+
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _cts.Cancel();
+
+            if (_refreshWorker is not null)
+            {
+                try
+                {
+                    _refreshWorker.ConfigureAwait(false)
+                        .GetAwaiter().GetResult();
+                }
+                catch (OperationCanceledException)
+                {
+
+                }
+                catch (Exception e)
+                {
+                    Debug.WriteLine($"Unhandled exception when waiting for the worker to stop: {e}");
+                }
+            }
+
+            _cts.Dispose();
         }
 
-        if(HasSameData(applicationSettings))
-            return;
+        _refreshWorker = null;
+    }
 
-        Data = applicationSettings;
+    #endregion
 
-        OnReload();
+    public override void Load()
+    {
+        LoadAsync(CancellationToken.None).ConfigureAwait(false)
+            .GetAwaiter().GetResult();
+
+        var ct = _cts.Token;
+        _refreshWorker ??= Task.Run(async () =>
+        {
+            do
+            {
+                await Task.Delay(15_000, ct);
+                try
+                {
+                    await LoadAsync(ct);
+                }
+                catch (Exception e)
+                {
+                    Debug.WriteLine($"Unhandled exception when refreshing database settings: {e}");
+                }
+            } while (!ct.IsCancellationRequested);
+        }, ct);
     }
 
     private bool HasSameData(Dictionary<string, string> applicationSettings)
@@ -42,5 +88,27 @@ from ApplicationSettings").ToDictionary(e => e.Key, e => e.Value);
         }
 
         return true;
+    }
+
+    private async Task LoadAsync(CancellationToken ct)
+    {
+        Dictionary<string, string> applicationSettings;
+        await using (var connection = new SqlConnection(source.ConnectionString))
+        {
+            await connection.OpenAsync(ct);
+
+            applicationSettings = (await connection.QueryAsync<(string Key, string Value)>(new CommandDefinition(@"
+select 
+    [Key],
+    [Value]
+from ApplicationSettings", cancellationToken: ct))).ToDictionary(e => e.Key, e => e.Value);
+        }
+
+        if (HasSameData(applicationSettings))
+            return;
+
+        Data = applicationSettings;
+
+        OnReload();
     }
 }

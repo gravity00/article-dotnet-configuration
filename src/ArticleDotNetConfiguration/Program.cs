@@ -20,6 +20,15 @@ var logger = host.Services.GetRequiredService<ILogger<Program>>();
 
 logger.LogInformation("Application started...");
 
-var appOptions = host.Services.GetRequiredService<IOptions<AppOptions>>().Value;
+var appOptions = host.Services.GetRequiredService<IOptionsMonitor<AppOptions>>();
 
-logger.LogInformation("Application says: '{Message}'", appOptions.Message);
+await Task.Run(async () =>
+{
+    while (true)
+    {
+        var options = appOptions.CurrentValue;
+
+        logger.LogInformation("Application says: '{Message}'", options.Message);
+        await Task.Delay(5_000);
+    }
+});
