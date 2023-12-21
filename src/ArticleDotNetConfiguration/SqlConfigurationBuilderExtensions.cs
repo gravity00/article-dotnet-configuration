@@ -17,13 +17,6 @@ public static class SqlConfigurationBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(connectionFactory);
 
-        builder.SetFileLoadExceptionHandler(ctx =>
-        {
-
-        });
-
-        var x = builder.GetFileLoadExceptionHandler();
-
         return builder.Add<SqlConfigurationSource>(source =>
         {
             source.ConnectionFactory = connectionFactory;

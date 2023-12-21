@@ -8,7 +8,10 @@ using Microsoft.Extensions.Options;
 var builder = Host.CreateApplicationBuilder(args);
 
 var connectionString = builder.Configuration.GetConnectionString("ArticleDotNetConfiguration");
-builder.Configuration.AddSql(() => new SqlConnection(connectionString));
+builder.Configuration.AddSql(
+    () => new SqlConnection(connectionString),
+    refreshInterval: TimeSpan.FromSeconds(10)
+);
 
 builder.Services.Configure<ExampleOptions>(
     builder.Configuration.GetSection("Example")
