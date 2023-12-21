@@ -1,6 +1,6 @@
 ﻿namespace ArticleDotNetConfiguration;
 
-public record AppOptions
+public record ExampleOptions
 {
     public string Message { get; init; }
 }

@@ -9,13 +9,13 @@ var builder = Host.CreateApplicationBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("ArticleDotNetConfiguration");
 builder.Configuration.AddSqlServer(connectionString);
 
-builder.Services.Configure<AppOptions>(
-    builder.Configuration.GetSection("App")
+builder.Services.Configure<ExampleOptions>(
+    builder.Configuration.GetSection("Example")
 );
 
 using var host = builder.Build();
 
-var appOptions = host.Services.GetRequiredService<IOptionsMonitor<AppOptions>>();
+var appOptions = host.Services.GetRequiredService<IOptionsMonitor<ExampleOptions>>();
 
 await Task.Run(async () =>
 {
@@ -23,7 +23,7 @@ await Task.Run(async () =>
     {
         var options = appOptions.CurrentValue;
 
-        Console.WriteLine("Application says: '{0}'", options.Message);
+        Console.WriteLine(options.Message);
         await Task.Delay(5_000);
     } while (true);
 });

@@ -9,7 +9,7 @@ public class SqlServerConfigurationProvider(
     SqlServerConfigurationSource source
 ) : ConfigurationProvider, IDisposable
 {
-    private readonly CancellationTokenSource _cts = new();
+    private CancellationTokenSource _cts;
     private Task _refreshWorker;
 
     #region IDisposable
@@ -26,7 +26,7 @@ public class SqlServerConfigurationProvider(
     {
         if (disposing)
         {
-            _cts.Cancel();
+            _cts?.Cancel();
 
             if (_refreshWorker is not null)
             {
@@ -37,7 +37,7 @@ public class SqlServerConfigurationProvider(
                 }
                 catch (OperationCanceledException)
                 {
-
+                    // expected exception due to cancellation
                 }
                 catch (Exception e)
                 {
@@ -45,10 +45,11 @@ public class SqlServerConfigurationProvider(
                 }
             }
 
-            _cts.Dispose();
+            _cts?.Dispose();
         }
 
         _refreshWorker = null;
+        _cts = null;
     }
 
     #endregion
@@ -57,6 +58,11 @@ public class SqlServerConfigurationProvider(
     {
         LoadAsync(CancellationToken.None).ConfigureAwait(false)
             .GetAwaiter().GetResult();
+
+        if (_cts is not null) 
+            return;
+
+        _cts = new CancellationTokenSource();
 
         var ct = _cts.Token;
         _refreshWorker ??= Task.Run(async () =>
@@ -76,39 +82,39 @@ public class SqlServerConfigurationProvider(
         }, ct);
     }
 
-    private bool HasSameData(Dictionary<string, string> applicationSettings)
-    {
-        if (Data.Count != applicationSettings.Count) 
-            return false;
-
-        foreach (var (key, value) in applicationSettings)
-        {
-            if (!Data.TryGetValue(key, out var previousValue) || previousValue != value)
-                return false;
-        }
-
-        return true;
-    }
-
     private async Task LoadAsync(CancellationToken ct)
     {
-        Dictionary<string, string> applicationSettings;
+        Dictionary<string, string> currentData;
         await using (var connection = new SqlConnection(source.ConnectionString))
         {
             await connection.OpenAsync(ct);
 
-            applicationSettings = (await connection.QueryAsync<(string Key, string Value)>(new CommandDefinition(@"
+            currentData = (await connection.QueryAsync<(string Key, string Value)>(new CommandDefinition(@"
 select 
     [Key],
     [Value]
 from ApplicationSettings", cancellationToken: ct))).ToDictionary(e => e.Key, e => e.Value);
         }
 
-        if (HasSameData(applicationSettings))
+        if (HasSameData(currentData))
             return;
 
-        Data = applicationSettings;
+        Data = currentData;
 
         OnReload();
+    }
+
+    private bool HasSameData(Dictionary<string, string> currentData)
+    {
+        if (Data.Count != currentData.Count)
+            return false;
+
+        foreach (var (key, value) in currentData)
+        {
+            if (!Data.TryGetValue(key, out var previousValue) || previousValue != value)
+                return false;
+        }
+
+        return true;
     }
 }
